@@ -1,6 +1,8 @@
 from fastapi import APIRouter
-from src.api.hello_world.main import router as hello_world_router
+from src.api import books, users, rentals
 
-router = APIRouter()
+api_router = APIRouter(prefix="/api")
 
-router.include_router(hello_world_router)
+api_router.include_router(books.router)
+api_router.include_router(users.router)
+api_router.include_router(rentals.router)
