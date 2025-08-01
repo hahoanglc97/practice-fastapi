@@ -2,6 +2,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.schemas.book import BookCreate, BookResponse
+from src.schemas.book_copy import BookWithCopyResponse
 from src.repositories.book_repository import BookRepository
 from src.dependencies import get_book_repository
 
@@ -94,3 +95,33 @@ def delete_book(book_id: int, book_repo: BookRepository = Depends(get_book_repos
         raise HTTPException(status_code=404, detail="Book not found")
     
     return {"message": "Book deleted successfully"}
+
+@router.get("/copy/{book_copy_id}", response_model=BookWithCopyResponse)
+def get_book_by_copy_id(book_copy_id: int, book_repo: BookRepository = Depends(get_book_repository)):
+    """Get book information along with copy details by book_copy_id"""
+    result = book_repo.get_book_by_copy_id(book_copy_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Book copy not found")
+    
+    book, book_copy = result
+    
+    # Create response with both book and copy information
+    return BookWithCopyResponse(
+        # Book information
+        id=book.id,
+        ISBN=book.ISBN,
+        title=book.title,
+        author=book.author,
+        publication_year=book.publication_year,
+        publisher=book.publisher,
+        image_url_s=book.image_url_s,
+        image_url_m=book.image_url_m,
+        image_url_l=book.image_url_l,
+        created_at=book.created_at,
+        modified_at=book.modified_at,
+        # Book copy information
+        copy_id=book_copy.id,
+        copy_status=book_copy.status,
+        copy_created_at=book_copy.created_at,
+        copy_modified_at=book_copy.modified_at
+    )
