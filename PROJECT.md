@@ -1,6 +1,6 @@
 # FastAPI Library Management System
 
-A comprehensive library management system built with FastAPI, PostgreSQL, and Docker. This system enables librarians to manage books, users, rentals, and inventory with a modern REST API and clean architecture.
+A comprehensive library management system built with FastAPI, PostgreSQL, and Docker. This system enables librarians to manage books, users, rentals, book copies, and inventory with a modern REST API and clean architecture.
 
 ## 📊 Data Model & Architecture
 
@@ -229,13 +229,52 @@ docker-compose down -v --rmi all
 
 #### Books Management
 ```http
-GET    /api/books/              # List all books
-GET    /api/books/available     # Books with available copies
-GET    /api/books/search        # Search by title/author/ISBN
-GET    /api/books/{id}          # Get specific book
-POST   /api/books/              # Add new book
-PUT    /api/books/{id}          # Update book
-DELETE /api/books/{id}          # Remove book
+GET    /api/books/                    # List all books (paginated)
+GET    /api/books/available           # Books with available copies
+GET    /api/books/search              # Search by title/author/ISBN
+GET    /api/books/{id}                # Get specific book
+GET    /api/books/isbn/{isbn}         # Get book by ISBN
+GET    /api/books/copy/{copy_id}      # Get book info by copy ID
+GET    /api/books/{book_id}/copies    # Get all copies of a book
+POST   /api/books/                    # Create new book
+POST   /api/books/{book_id}/copies    # Create new copy for a book
+PUT    /api/books/{id}                # Update book
+DELETE /api/books/{id}                # Delete book
+```
+
+#### Book Copy Management
+```http
+GET    /api/book-copies/              # List all book copies (paginated)
+GET    /api/book-copies/search        # Search copies with filters
+GET    /api/book-copies/by-status/{status}  # Get copies by status
+GET    /api/book-copies/book/{book_id}      # Get all copies of a book
+GET    /api/book-copies/book/{book_id}/available  # Get available copies
+GET    /api/book-copies/{copy_id}     # Get specific copy
+GET    /api/book-copies/stats/book/{book_id}  # Get copy statistics for book
+POST   /api/book-copies/              # Create new book copy
+PUT    /api/book-copies/{copy_id}     # Update book copy
+PATCH  /api/book-copies/{copy_id}/status  # Update copy status only
+DELETE /api/book-copies/{copy_id}     # Delete book copy
+```
+
+#### Inventory Management
+```http
+GET    /api/inventory/                # List all inventory records
+GET    /api/inventory/with-books      # Inventory with book information
+GET    /api/inventory/search          # Search inventory with filters
+GET    /api/inventory/stats           # Overall inventory statistics
+GET    /api/inventory/low-stock       # Books below stock threshold
+GET    /api/inventory/out-of-stock    # Books with no available copies
+GET    /api/inventory/no-copies       # Books with zero total copies
+GET    /api/inventory/top-borrowed    # Most borrowed books
+GET    /api/inventory/most-available  # Books with most available copies
+GET    /api/inventory/book/{book_id}  # Inventory for specific book
+GET    /api/inventory/{inventory_id}  # Get specific inventory record
+POST   /api/inventory/                # Create inventory record
+PUT    /api/inventory/{inventory_id}  # Update inventory record
+PATCH  /api/inventory/{inventory_id}/adjust  # Adjust inventory counts
+PATCH  /api/inventory/book/{book_id}/sync    # Sync with actual copies
+DELETE /api/inventory/{inventory_id}  # Delete inventory record
 ```
 
 #### User Management
@@ -289,37 +328,47 @@ curl -X POST "http://localhost:8000/api/rentals/return" \
 curl "http://localhost:8000/api/books/search?title=python&author=smith"
 ```
 
-## 🗄️ Database Management
-
-### Direct Database Access
-
+#### Book Copy Management
 ```bash
-# Connect to PostgreSQL shell
-make db-shell
+# Search book copies by status and book title
+curl "http://localhost:8000/api/book-copies/search?status=available&book_title=python"
 
-# Or manually:
-docker-compose exec db psql -U admin -d practice_fastapi
+# Get copy statistics for a book
+curl "http://localhost:8000/api/book-copies/stats/book/123"
+
+# Update copy status
+curl -X PATCH "http://localhost:8000/api/book-copies/456/status?new_status=borrowed"
+
+# Create new copy for a book
+curl -X POST "http://localhost:8000/api/books/123/copies"
 ```
 
-### pgAdmin Web Interface
-
-1. Access pgAdmin at http://localhost:5050
-2. Login with `admin@library.com` / `admin123`
-3. Add server connection:
-   - Host: `db`
-   - Port: `5432`
-   - Database: `practice_fastapi`
-   - Username: `admin`
-   - Password: `Admin123`
-
-### Backup and Restore
-
+#### Inventory Management
 ```bash
-# Backup database
-docker-compose exec db pg_dump -U admin practice_fastapi > backup.sql
+# Get inventory statistics
+curl "http://localhost:8000/api/inventory/stats"
 
-# Restore database
-docker-compose exec -T db psql -U admin practice_fastapi < backup.sql
+# Find books with low stock (threshold: 2)
+curl "http://localhost:8000/api/inventory/low-stock?threshold=2"
+
+# Search inventory by book author with stock filters
+curl "http://localhost:8000/api/inventory/search?book_author=Stephen%20King&min_available=1"
+
+# Adjust inventory - add 5 available copies
+curl -X PATCH "http://localhost:8000/api/inventory/123/adjust" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "adjustment_type": "add",
+    "copy_type": "available_copies",
+    "amount": 5,
+    "reason": "New shipment received"
+  }'
+
+# Sync inventory with actual book copies
+curl -X PATCH "http://localhost:8000/api/inventory/book/456/sync"
+
+# Get top 5 most borrowed books
+curl "http://localhost:8000/api/inventory/top-borrowed?limit=5"
 ```
 
 ## 🔧 Configuration
@@ -366,24 +415,30 @@ practice-fastapi/
 ├── 📁 src/                    # Source code
 │   ├── 📁 api/               # FastAPI routers
 │   │   ├── books.py          # Book endpoints
+│   │   ├── book_copies.py    # Book copy endpoints
+│   │   ├── inventory.py      # Inventory management endpoints
 │   │   ├── users.py          # User endpoints
 │   │   ├── rentals.py        # Rental endpoints
 │   │   └── main_router.py    # Main API router
 │   ├── 📁 models/            # SQLAlchemy models
-│   │   ├── book.py           # Book & related models
+│   │   ├── book.py           # Book model
+│   │   ├── book_copy.py      # Book copy model with status
+│   │   ├── inventory.py      # Inventory model
 │   │   ├── user.py           # User model
-│   │   ├── rental.py         # Rental models
-│   │   ├── book_copy.py      # Book copy model
-│   │   └── inventory.py      # Inventory model
+│   │   └── rental.py         # Rental models
 │   ├── 📁 schemas/           # Pydantic schemas
-│   │   ├── book.py           # Book validation
-│   │   ├── user.py           # User validation
-│   │   └── rental.py         # Rental validation
+│   │   ├── book.py           # Book validation schemas
+│   │   ├── book_copy.py      # Book copy validation schemas
+│   │   ├── inventory.py      # Inventory validation schemas
+│   │   ├── user.py           # User validation schemas
+│   │   └── rental.py         # Rental validation schemas
 │   ├── 📁 repositories/      # Data access layer
 │   │   ├── base.py           # Base repository
-│   │   ├── book_repository.py
-│   │   ├── user_repository.py
-│   │   └── rental_repository.py
+│   │   ├── book_repository.py      # Book operations
+│   │   ├── book_copy_repository.py # Book copy operations
+│   │   ├── inventory_repository.py # Inventory operations
+│   │   ├── user_repository.py      # User operations
+│   │   └── rental_repository.py    # Rental operations
 │   ├── 📁 utils/             # Utilities
 │   │   └── db_utils.py       # Database connections
 │   └── dependencies.py       # Dependency injection
@@ -406,13 +461,102 @@ practice-fastapi/
 - **Flexible Returns**: Return entire rental or individual books
 - **Due Date Management**: Automatic 14-day default, custom dates supported
 
-### Inventory Management
-- **Real-time Updates**: Inventory counts update with each transaction
+### Advanced Book Copy Management
 - **Status Tracking**: Available, borrowed, lost, damaged status per copy
-- **Availability Checks**: Prevents borrowing unavailable books
+- **Copy-Level Operations**: Create, update, delete individual book copies
+- **Status Transitions**: Track copy lifecycle from available to borrowed/lost/damaged
+- **Copy Statistics**: Detailed analytics per book's copies
+- **Search & Filter**: Find copies by status, book, or combined criteria
+
+### Comprehensive Inventory Management
+- **Real-time Updates**: Inventory counts update with each transaction
+- **Multi-Level Tracking**: Total, available, borrowed, lost, damaged counts
+- **Automated Synchronization**: Sync inventory with actual book copies
+- **Flexible Adjustments**: Add, remove, or set exact inventory counts
+- **Stock Alerts**: Automatic low-stock and out-of-stock notifications
+- **Analytics Dashboard**: Utilization rates, top borrowed books, stock trends
 
 ### Search & Discovery
-- **Flexible Search**: Search by title, author, or ISBN
+- **Flexible Search**: Search by title, author, ISBN across books and copies
 - **Availability Filter**: Find only books with available copies
+- **Advanced Filters**: Combine multiple criteria for precise results
 - **Pagination**: Efficient handling of large datasets
+- **Cross-Entity Search**: Search inventory by book metadata
+
+### Inventory Analytics & Reporting
+- **Overall Statistics**: System-wide inventory metrics and utilization rates
+- **Stock Management**: Low stock alerts with configurable thresholds
+- **Popular Books**: Identify most borrowed and most available titles
+- **Inventory Health**: Track books with no copies or requiring attention
+- **Data Synchronization**: Ensure consistency between copies and inventory records
+
+## ✨ Enhanced API Features
+
+### 🔍 Advanced Search Capabilities
+- **Multi-Entity Search**: Search across books, copies, and inventory with unified interfaces
+- **Flexible Filtering**: Combine multiple search criteria for precise results
+- **Status-Based Queries**: Filter by copy status (available, borrowed, lost, damaged)
+- **Stock-Level Filtering**: Find books by availability ranges and stock thresholds
+- **Cross-Reference Searches**: Search copies by book metadata and vice versa
+
+### 📊 Comprehensive Analytics
+- **Real-Time Statistics**: Live inventory metrics and system utilization rates
+- **Stock Management Alerts**: Configurable low-stock and out-of-stock notifications
+- **Popular Book Tracking**: Identify trending titles and high-demand inventory
+- **Copy Lifecycle Analytics**: Track individual copy status transitions and history
+- **Performance Metrics**: Borrowing patterns, return rates, and inventory turnover
+
+### 🔧 Advanced Inventory Operations
+- **Flexible Inventory Adjustments**: Add, remove, or set exact inventory counts
+- **Automated Synchronization**: Keep inventory consistent with actual book copies
+- **Bulk Operations**: Manage multiple copies and inventory records efficiently
+- **Audit Trail**: Track all inventory changes with timestamps and reasons
+- **Validation Logic**: Prevent invalid operations and maintain data integrity
+
+### 🎯 Copy Management Excellence
+- **Individual Copy Tracking**: Full lifecycle management of each physical book
+- **Status Management**: Seamless transitions between available, borrowed, lost, damaged
+- **Copy Statistics**: Detailed analytics per book's copy distribution
+- **Batch Operations**: Create multiple copies, update statuses in bulk
+- **Integration with Rentals**: Automatic status updates during borrow/return cycles
+
+### 🔗 API Integration Features
+- **RESTful Design**: Clean, consistent API patterns across all endpoints
+- **Comprehensive CRUD**: Full create, read, update, delete operations for all entities
+- **Error Handling**: Detailed error messages and appropriate HTTP status codes
+- **Data Validation**: Robust input validation with Pydantic schemas
+- **Response Models**: Structured, predictable response formats with proper typing
+
+## 🗄️ Database Management
+
+### Direct Database Access
+
+```bash
+# Connect to PostgreSQL shell
+make db-shell
+
+# Or manually:
+docker-compose exec db psql -U admin -d practice_fastapi
+```
+
+### pgAdmin Web Interface
+
+1. Access pgAdmin at http://localhost:5050
+2. Login with `admin@library.com` / `admin123`
+3. Add server connection:
+   - Host: `db`
+   - Port: `5432`
+   - Database: `practice_fastapi`
+   - Username: `admin`
+   - Password: `Admin123`
+
+### Backup and Restore
+
+```bash
+# Backup database
+docker-compose exec db pg_dump -U admin practice_fastapi > backup.sql
+
+# Restore database
+docker-compose exec -T db psql -U admin practice_fastapi < backup.sql
+```
 

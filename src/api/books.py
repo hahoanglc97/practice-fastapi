@@ -2,9 +2,11 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.schemas.book import BookCreate, BookResponse
-from src.schemas.book_copy import BookWithCopyResponse
+from src.schemas.book_copy import BookWithCopyResponse, BookCopyResponse, BookCopyCreate
+from src.models.book_copy import BookCopyStatus
 from src.repositories.book_repository import BookRepository
-from src.dependencies import get_book_repository
+from src.repositories.book_copy_repository import BookCopyRepository
+from src.dependencies import get_book_repository, get_book_copy_repository
 
 router = APIRouter(prefix="/books", tags=["books"])
 
@@ -125,3 +127,34 @@ def get_book_by_copy_id(book_copy_id: int, book_repo: BookRepository = Depends(g
         copy_created_at=book_copy.created_at,
         copy_modified_at=book_copy.modified_at
     )
+
+@router.get("/{book_id}/copies", response_model=List[BookCopyResponse])
+def get_book_copies(
+    book_id: int,
+    book_repo: BookRepository = Depends(get_book_repository),
+    book_copy_repo: BookCopyRepository = Depends(get_book_copy_repository)
+):
+    """Get all copies of a specific book"""
+    # Verify book exists
+    book = book_repo.get(book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+    
+    copies = book_copy_repo.get_copies_by_book_id(book_id)
+    return copies
+
+@router.post("/{book_id}/copies", response_model=BookCopyResponse, status_code=201)
+def create_book_copy_for_book(
+    book_id: int,
+    book_repo: BookRepository = Depends(get_book_repository),
+    book_copy_repo: BookCopyRepository = Depends(get_book_copy_repository)
+):
+    """Create a new copy for a specific book"""
+    # Verify book exists
+    book = book_repo.get(book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+    
+    # Create new copy with default available status
+    copy_data = BookCopyCreate(book_id=book_id, status=BookCopyStatus.AVAILABLE)
+    return book_copy_repo.create(copy_data)
